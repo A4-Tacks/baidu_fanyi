@@ -177,3 +177,45 @@ pub mod mini_fmt {
         }
     }
 }
+pub mod traits {
+    pub trait FilterOutLongEmpty {
+        type Output;
+        fn filter_out_long_empty(&self, count: usize) -> Self::Output;
+    }
+    impl FilterOutLongEmpty for &str {
+        type Output = String;
+        /// 过滤多余的空白符
+        /// # Examples
+        /// ```
+        /// use baidu_fanyi::traits::FilterOutLongEmpty;
+        /// assert_eq!(&"a   b".filter_out_long_empty(0), "ab");
+        /// assert_eq!(&"a   b".filter_out_long_empty(1), "a b");
+        /// assert_eq!(&"a   b".filter_out_long_empty(2), "a  b");
+        /// assert_eq!(&"a   b".filter_out_long_empty(3), "a   b");
+        /// assert_eq!(&"a   b".filter_out_long_empty(4), "a   b");
+        fn filter_out_long_empty(&self, count: usize) -> Self::Output {
+            let mut res = String::with_capacity(self.len());
+            let mut continue_count: usize = 0;
+            if count == 0 {
+                #[inline]
+                fn filter(char: &char) -> bool {
+                    ! char.is_whitespace()
+                }
+                res.extend(self.chars().filter(filter))
+            } else {
+                for char in self.chars() {
+                    if char.is_whitespace() {
+                        continue_count += 1
+                    } else {
+                        continue_count = 0
+                    }
+                    if continue_count <= count {
+                        res.push(char)
+                    }
+                }
+            }
+            res.shrink_to_fit();
+            res
+        }
+    }
+}

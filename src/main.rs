@@ -17,7 +17,7 @@ use std::{
     process::exit,
 };
 
-use baidu_fanyi::mini_fmt::Fmtter;
+use baidu_fanyi::{mini_fmt::Fmtter, traits::FilterOutLongEmpty};
 use reqwest::{
     header::HeaderMap,
     Client,
@@ -257,6 +257,7 @@ struct Config {
     to_lang: Option<String>,
     text: String,
     format: Fmtter,
+    long_empty_count: usize,
 }
 impl Default for Config {
     fn default() -> Self {
@@ -264,7 +265,8 @@ impl Default for Config {
             from_lang: None,
             to_lang: None,
             text: String::new(),
-            format: Fmtter::build("%s\n%s\n").unwrap()
+            format: Fmtter::build("%s\n%s\n").unwrap(),
+            long_empty_count: 2,
         }
     }
 }
@@ -282,6 +284,7 @@ fn help(code: i32) -> ! {
         "    -f               from lang",
         "    -t               to lang",
         "    -m               formatter",
+        "    -o               filter out empty count (default:2)",
         "    --               stop read options",
         "    -v, --version    version",
         "    -h, --help       help",
@@ -351,6 +354,11 @@ fn get_cfg() -> Config {
             "-h" | "--help" => help(0),
             "-f" => cfg.from_lang = Some(get!(i)),
             "-t" => cfg.to_lang = Some(get!(i)),
+            "-o" => cfg.long_empty_count = get!(i).parse()
+                .unwrap_or_else(|e| {
+                    eprintln!("parse to int error: {}", e);
+                    exit(2)
+                }),
             "-m" => cfg.format = Fmtter::build(&get!(i))
                 .unwrap_or_else(|e| {
                     eprintln!("build fmtter error: {}", e);
@@ -369,6 +377,7 @@ fn get_cfg() -> Config {
             }
         }
     }
+    cfg.text = (&*cfg.text).filter_out_long_empty(cfg.long_empty_count);
     if ! with_args {
         eprintln!("error: no args");
         help(2);
