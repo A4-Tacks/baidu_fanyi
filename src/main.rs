@@ -251,12 +251,13 @@ impl<'a> Translater<'a> {
 }
 
 
+const DEFAULT_OUT_FORMAT: &str = "%s\n%s\n";
 
 struct Config {
     from_lang: Option<String>,
     to_lang: Option<String>,
     text: String,
-    format: Fmtter,
+    format: Vec<Fmtter>,
     long_empty_count: usize,
 }
 impl Default for Config {
@@ -265,7 +266,7 @@ impl Default for Config {
             from_lang: None,
             to_lang: None,
             text: String::new(),
-            format: Fmtter::build("%s\n%s\n").unwrap(),
+            format: vec![],
             long_empty_count: 2,
         }
     }
@@ -283,7 +284,7 @@ fn help(code: i32) -> ! {
         "OPTIONS:",
         "    -f               from lang",
         "    -t               to lang",
-        "    -m               formatter",
+        "    -m               formatters (multiple)",
         "    -o               filter out empty count (default:2)",
         "    --               stop read options",
         "    -v, --version    version",
@@ -301,6 +302,9 @@ fn help(code: i32) -> ! {
         "    | %N | CR          |",
         "    | %t | Tab         |",
         "    | %e | ESC         |",
+        "    | %x | ASCII       |",
+        "    | %u | Unicode     |",
+        "    | %U | Unicode+    |",
         "    |----|-------------|",
         "    `%[n]...` example: `%0s`, index 0 Display",
     }, env!("CARGO_BIN_NAME"), config_path());
@@ -359,11 +363,12 @@ fn get_cfg() -> Config {
                     eprintln!("parse to int error: {}", e);
                     exit(2)
                 }),
-            "-m" => cfg.format = Fmtter::build(&get!(i))
+            "-m" => cfg.format.push(
+                Fmtter::build(&get!(i))
                 .unwrap_or_else(|e| {
                     eprintln!("build fmtter error: {}", e);
                     exit(2);
-                }),
+                })),
             "-v" => {
                 eprintln!("v{}", env!("CARGO_PKG_VERSION"));
                 exit(0);
@@ -376,6 +381,10 @@ fn get_cfg() -> Config {
                 get_file!(path)
             }
         }
+    }
+    if cfg.format.len() == 0 {
+        // use default formater
+        cfg.format.push(Fmtter::build(DEFAULT_OUT_FORMAT).unwrap())
     }
     cfg.text = (&*cfg.text).filter_out_long_empty(cfg.long_empty_count);
     if ! with_args {
@@ -404,14 +413,20 @@ async fn main() {
     let result: JSONData
         = translater.translate(cfg.text).await;
     if let Some(lines) = result.get("trans_result") {
-        for line in lines.as_array().unwrap() {
+        let lines = lines.as_array().unwrap();
+        let mut strs: Vec<[&str; 2]> = Vec::with_capacity(lines.len());
+        for line in lines {
             let line = line.as_object().unwrap();
-            let [dst, src]
-                = [
-                line.get("dst").unwrap().as_str().unwrap(),
-                line.get("src").unwrap().as_str().unwrap()
-                ];
-            print!("{}", cfg.format.fmt_str(&[dst, src]));
+            strs.push([
+                      line.get("dst").unwrap().as_str().unwrap(),
+                      line.get("src").unwrap().as_str().unwrap()
+            ]);
+        }
+        // formats
+        for fmtter in cfg.format {
+            for item in strs.iter() {
+                print!("{}", fmtter.fmt_str(item))
+            }
         }
     } else {
         eprintln!("result data error: {:#?}", result);

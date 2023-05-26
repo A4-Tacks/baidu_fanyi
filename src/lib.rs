@@ -59,8 +59,13 @@ pub mod mini_fmt {
     /// assert_eq!(&fmtter.fmt_str(&[7]), "ab7de");
     ///
     /// let fmtter = Fmtter::build("%s,%s,%0s,%1r,%s").unwrap();
-    /// dbg!(&fmtter);
     /// assert_eq!(&fmtter.fmt_str(&["a", "b", "c"]), "a,b,a,\"b\",c");
+    ///
+    /// assert_eq!(&Fmtter::build("%x1b").unwrap().fmt_str::<&str>(&[]), "\x1b");
+    /// assert_eq!(&Fmtter::build("%x1C").unwrap().fmt_str::<&str>(&[]), "\x1c");
+    /// assert_eq!(&Fmtter::build("%u0879").unwrap().fmt_str::<&str>(&[]), "\u{0879}");
+    /// assert_eq!(&Fmtter::build("%U10ffff").unwrap().fmt_str::<&str>(&[]), "\u{10ffff}");
+    /// assert!(Fmtter::build("%U110000").is_err());
     /// ```
     /// |----|-------------|
     /// | %s | Display     |
@@ -70,6 +75,9 @@ pub mod mini_fmt {
     /// | %N | CR          |
     /// | %t | Tab         |
     /// | %e | ESC         |
+    /// | %x | ASCII       |
+    /// | %u | Unicode     |
+    /// | %U | Unicode+    |
     /// |----|-------------|
     ///
     /// `%[n]...` example: `%0s`, index 0 Display
@@ -123,6 +131,29 @@ pub mod mini_fmt {
                         }
                     }};
                 }
+                macro_rules! no_use {
+                    ( ($( $a:tt )* ) [ $( $b:tt )* ]) => {
+                        ($( $a )* )
+                    };
+                }
+                macro_rules! add_hex {
+                    ( ( $( $t:tt )* ) $type:tt ) => {{
+                        let chars
+                            = [$( no_use!((get_seq!())[$t]) ),*];
+                        let hex = String::from_iter(chars);
+                        if let Ok(val) = $type::from_str_radix(&hex, 16) {
+                            last_val.push(
+                                if let Some(x) = char::from_u32(val as u32) {
+                                    x
+                                } else {
+                                    return Err(
+                                        format!("{:x} to char failed", val))
+                                })
+                        } else {
+                            return Err(format!("build hex error: {:?}", hex));
+                        };
+                    }};
+                }
                 /// 完成最终转义序列的匹配
                 macro_rules! style_pat {
                     ( $val:expr ) => {{
@@ -152,6 +183,9 @@ pub mod mini_fmt {
                             'N' => last_val.push('\r'), // 回车
                             't' => last_val.push('\t'), // 制表
                             'e' => last_val.push('\x1b'), // ESC
+                            'x' => add_hex!((++) u8), // ASCII
+                            'u' => add_hex!((++++) u16), // Unicode
+                            'U' => add_hex!((++++++) u32), // Unicode+
                             _ => add!(FmtType::Value {
                                 style: style_pat!(next_c)
                             }),
