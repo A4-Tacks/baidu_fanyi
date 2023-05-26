@@ -369,7 +369,7 @@ fn get_cfg() -> Config {
                     eprintln!("build fmtter error: {}", e);
                     exit(2);
                 })),
-            "-v" => {
+            "-v" | "--version" => {
                 eprintln!("v{}", env!("CARGO_PKG_VERSION"));
                 exit(0);
             },
