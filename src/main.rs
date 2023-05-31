@@ -282,9 +282,9 @@ fn help(code: i32) -> ! {
     eprint!(concatn!{
         "USAGE: {} [OPTIONS] <FILE>",
         "OPTIONS:",
-        "    -f               from lang",
-        "    -t               to lang",
-        "    -m               formatters (multiple)",
+        "    -f, --from       from lang",
+        "    -t, --to         to lang",
+        "    -m, --fmt        formatters (multiple)",
         "    -o               filter out empty count (default:2)",
         "    --               stop read options",
         "    -v, --version    version",
@@ -356,19 +356,19 @@ fn get_cfg() -> Config {
         with_args = true;
         match &*i {
             "-h" | "--help" => help(0),
-            "-f" => cfg.from_lang = Some(get!(i)),
-            "-t" => cfg.to_lang = Some(get!(i)),
-            "-o" => cfg.long_empty_count = get!(i).parse()
-                .unwrap_or_else(|e| {
-                    eprintln!("parse to int error: {}", e);
-                    exit(2)
-                }),
-            "-m" => cfg.format.push(
+            "-f" | "--from" => cfg.from_lang = Some(get!(i)),
+            "-t" | "--to" => cfg.to_lang = Some(get!(i)),
+            "-m" | "--fmt" => cfg.format.push(
                 Fmtter::build(&get!(i))
                 .unwrap_or_else(|e| {
                     eprintln!("build fmtter error: {}", e);
                     exit(2);
                 })),
+            "-o" => cfg.long_empty_count = get!(i).parse()
+                .unwrap_or_else(|e| {
+                    eprintln!("parse to int error: {}", e);
+                    exit(2)
+                }),
             "-v" | "--version" => {
                 eprintln!("v{}", env!("CARGO_PKG_VERSION"));
                 exit(0);
