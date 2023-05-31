@@ -204,7 +204,8 @@ impl<'a> Translater<'a> {
     }
 
     /// 请求翻译
-    pub async fn translate(&mut self, message: String) -> JSONData {
+    /// 复制一份 Translater 进行配置获取
+    pub async fn translate(mut self, message: String) -> JSONData {
         self.update_salt(); // 需要先初始化盐值
         let payload: JSONData = self.build_payload(message);
         let mut timeout_count: u32 = 0;
