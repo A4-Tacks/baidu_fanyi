@@ -60,7 +60,7 @@ pub const DEFAULT_FROM_LANG: &str = "auto";
 pub const DEFAULT_TO_LANG: &str = "auto";
 pub const MAX_TIMEOUT_COUNT: u32 = 2;
 pub const MAX_ERROR_COUNT: u32 = 2;
-pub const MAX_REQUEST_BYTES: usize = 4000;
+pub const MAX_REQUEST_BYTES: usize = 3000;
 
 
 lazy_static!{
@@ -277,6 +277,7 @@ impl Default for Config {
 }
 
 /// out help info and exit
+#[inline]
 fn help(code: i32) -> ! {
     macro_rules! concatn {
         ( $( $line:expr ),* $(,)? ) => {
@@ -316,6 +317,7 @@ fn help(code: i32) -> ! {
 }
 
 
+#[inline]
 fn get_cfg() -> Config {
     let mut args = args();
     args.next().unwrap(); // self
@@ -403,6 +405,34 @@ fn get_cfg() -> Config {
 }
 
 
+/// 格式化返回的 json 数据
+#[inline]
+fn format_out(fmtters: &Vec<Fmtter>, object: JSONData) -> Result<Vec<String>, String> {
+    if let Some(lines) = object.get("trans_result") {
+        let lines = lines.as_array().unwrap();
+        let mut strs: Vec<[&str; 2]> = Vec::with_capacity(lines.len());
+        for line in lines {
+            let line = line.as_object().unwrap();
+            strs.push([
+                      line.get("dst").unwrap().as_str().unwrap(),
+                      line.get("src").unwrap().as_str().unwrap()
+            ]);
+        }
+        // formats
+        let mut res_lines: Vec<String>
+            = Vec::with_capacity(strs.len() * fmtters.len());
+        for fmtter in fmtters.iter() {
+            for item in strs.iter() {
+                res_lines.push(fmtter.fmt_str(item))
+            }
+        }
+        Ok(res_lines)
+    } else {
+        Err(format!("result data error: {:#?}", object))
+    }
+}
+
+
 #[tokio::main]
 async fn main() {
     let cfg = get_cfg();
@@ -416,24 +446,12 @@ async fn main() {
     }
     let result: JSONData
         = translater.translate(cfg.text).await;
-    if let Some(lines) = result.get("trans_result") {
-        let lines = lines.as_array().unwrap();
-        let mut strs: Vec<[&str; 2]> = Vec::with_capacity(lines.len());
-        for line in lines {
-            let line = line.as_object().unwrap();
-            strs.push([
-                      line.get("dst").unwrap().as_str().unwrap(),
-                      line.get("src").unwrap().as_str().unwrap()
-            ]);
-        }
-        // formats
-        for fmtter in cfg.format {
-            for item in strs.iter() {
-                print!("{}", fmtter.fmt_str(item))
+    match format_out(&cfg.format, result) {
+        Ok(msg) => {
+            for line in msg {
+                print!("{}", line)
             }
         }
-    } else {
-        eprintln!("result data error: {:#?}", result);
-        exit(4);
+        Err(e) => panic!("{}", e),
     }
 }
