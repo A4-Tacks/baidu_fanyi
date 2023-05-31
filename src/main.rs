@@ -17,7 +17,10 @@ use std::{
     process::exit,
 };
 
-use baidu_fanyi::{mini_fmt::Fmtter, traits::FilterOutLongEmpty};
+use baidu_fanyi::{
+    mini_fmt::Fmtter,
+    traits::FilterOutLongEmpty
+};
 use reqwest::{
     header::HeaderMap,
     Client,
