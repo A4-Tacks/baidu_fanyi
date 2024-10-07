@@ -1,5 +1,5 @@
 pub mod mini_fmt {
-    use std::fmt::{Display, Debug};
+    use std::{fmt::{Debug, Display}, str::FromStr};
 
     #[derive(Debug, Clone, Copy)]
     pub enum FmtStyle {
@@ -94,6 +94,13 @@ pub mod mini_fmt {
         type Error = String;
         fn try_from(value: &str) -> Result<Self, Self::Error> {
             Self::build(value)
+        }
+    }
+    impl FromStr for Fmtter {
+        type Err = String;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            s.try_into()
         }
     }
     impl Fmtter {
@@ -248,7 +255,6 @@ pub mod traits {
                     }
                 }
             }
-            res.shrink_to_fit();
             res
         }
     }

@@ -1,16 +1,16 @@
 use std::{
     collections::HashMap,
     env::{
-        self, 
+        self,
         args
     },
     ffi::OsString,
     fs::{
-        self, 
+        self,
         read_to_string
     },
     io::{
-        stdin, 
+        stdin,
         Read
     },
     path::PathBuf,
@@ -266,7 +266,7 @@ struct Config {
 }
 impl Default for Config {
     fn default() -> Self {
-        Self { 
+        Self {
             from_lang: None,
             to_lang: None,
             text: String::new(),
@@ -278,26 +278,23 @@ impl Default for Config {
 
 /// out help info and exit
 #[inline]
-fn help(code: i32) -> ! {
+fn help(opts: &getopts::Options, code: i32) -> ! {
     macro_rules! concatn {
         ( $( $line:expr ),* $(,)? ) => {
             concat!( $( $line, "\n" ),* )
         };
     }
+    let bin_name = env!("CARGO_BIN_NAME");
+    let biref = opts.short_usage(bin_name);
+    let option = opts.usage(&format!("{biref} <FILE>"));
+    let cfg = config_path();
     eprint!(concatn!{
-        "USAGE: {} [OPTIONS] <FILE>",
-        "OPTIONS:",
-        "    -f, --from       from lang",
-        "    -t, --to         to lang",
-        "    -m, --fmt        formatters (multiple)",
-        "    -o               filter out empty count (default:2)",
-        "    --               stop read options",
-        "    -v, --version    version",
-        "    -h, --help       help",
+        "{option}",
         "NOTE:",
         "    <FILE> is - use stdin",
-        "    config file in {:?},",
+        "    config file in {cfg:?},",
         "        line1: appid, line2: appkey",
+        "",
         "Format:",
         "    |----|-------------|",
         "    | %s | Display     |",
@@ -312,95 +309,142 @@ fn help(code: i32) -> ! {
         "    | %U | Unicode+    |",
         "    |----|-------------|",
         "    `%[n]...` example: `%0s`, index 0 Display",
-    }, env!("CARGO_BIN_NAME"), config_path());
+    }, option=option, cfg=cfg);
     exit(code);
 }
 
-
-#[inline]
 fn get_cfg() -> Config {
-    let mut args = args();
-    args.next().unwrap(); // self
+    let args = args().collect::<Vec<_>>();
+
+    let mut opts = getopts::Options::new();
+
+    macro_rules! decl {
+        (@str $t:literal) => ($t);
+        (@str $t:tt) => (stringify!($t));
+
+        (@arg $t:literal) => (concat!("<", $t, ">"));
+        (@arg $t:tt) => (concat!("<", stringify!($t), ">"));
+
+        (-$short:ident --$long:tt * $desc:literal) => {
+            opts.optflagmulti(stringify!($short), decl!(@str $long), $desc);
+        };
+
+        (-$short:ident --$long:tt $desc:literal) => {
+            opts.optflag(stringify!($short), decl!(@str $long), $desc);
+        };
+
+        (-$short:ident --$long:tt (*$hint:tt) $desc:literal) => {
+            opts.optmulti(
+                stringify!($short),
+                decl!(@str $long),
+                $desc,
+                decl!(@arg $hint),
+            );
+        };
+
+        (-$short:ident --$long:tt ($hint:tt) $desc:literal) => {
+            opts.optopt(
+                stringify!($short),
+                decl!(@str $long),
+                $desc,
+                decl!(@arg $hint),
+            );
+        };
+    }
+
+    opts.parsing_style(getopts::ParsingStyle::StopAtFirstFree);
+
+    decl!(-f --from (lang)              "from lang");
+    decl!(-t --to (lang)                "to lang");
+    decl!(-m --fmt (*fstr)              "formatters (multiple)");
+    decl!(-o --"empty-count" (count)    "filter out empty count (default:2)");
+    decl!(-v --version*                 "show version");
+    decl!(-h --help*                    "show help");
+
+    let parsed = match opts.parse(&args[1..]) {
+        Ok(parsed) => parsed,
+        Err(getopts::Fail::ArgumentMissing(opt)) => {
+            eprintln!("Error: argument missing {opt}");
+            help(&opts, 2);
+        },
+        Err(getopts::Fail::UnrecognizedOption(opt)) => {
+            eprintln!("Error: invalid option {opt}");
+            help(&opts, 2);
+        },
+        Err(getopts::Fail::OptionMissing(opt)) => {
+            eprintln!("Error: missing required option {opt}");
+            help(&opts, 2);
+        },
+        Err(getopts::Fail::OptionDuplicated(opt)) => {
+            eprintln!("Error: option duplicated {opt}");
+            help(&opts, 2);
+        },
+        Err(getopts::Fail::UnexpectedArgument(opt)) => {
+            eprintln!("Error: unexpected argument {opt}");
+            help(&opts, 2);
+        },
+    };
+
+    if parsed.opt_present("help") { help(&opts, 0) }
+    if parsed.opt_present("version") {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        exit(0)
+    }
+
     let mut cfg = Config::default();
-    let mut with_args = false;
-    let mut readed_file = false;
-    macro_rules! get {
-        ( $key:expr ) => {{
-            args.next().unwrap_or_else(|| {
-                eprintln!("key {} no value.", $key);
-                exit(2);
-            })
-        }};
-    }
-    while let Some(i) = args.next() {
-        macro_rules! get_file {
-            ( $path:expr ) => {{
-                let path = $path;
-                if let Some(opt) = args.next() {
-                    eprintln!("redundant options: {:?}", opt);
-                    help(2);
-                }
-                if path == "-" {
-                    // stdin
-                    cfg.text.clear();
-                    stdin().read_to_string(&mut cfg.text)
-                        .unwrap_or_else(|e| {
-                            eprintln!("readstdin error: {}", e);
-                            exit(3);
-                        });
-                } else {
-                    cfg.text = read_to_string(path)
-                        .unwrap_or_else(|e| {
-                            eprintln!("readfile error: {}", e);
-                            exit(3);
-                        });
-                }
-                readed_file = true;
-                break;
-            }};
-        }
-        with_args = true;
-        match &*i {
-            "-h" | "--help" => help(0),
-            "-f" | "--from" => cfg.from_lang = Some(get!(i)),
-            "-t" | "--to" => cfg.to_lang = Some(get!(i)),
-            "-m" | "--fmt" => cfg.format.push(
-                Fmtter::build(&get!(i))
-                .unwrap_or_else(|e| {
-                    eprintln!("build fmtter error: {}", e);
-                    exit(2);
-                })),
-            "-o" => cfg.long_empty_count = get!(i).parse()
-                .unwrap_or_else(|e| {
-                    eprintln!("parse to int error: {}", e);
-                    exit(2)
-                }),
-            "-v" | "--version" => {
-                eprintln!("v{}", env!("CARGO_PKG_VERSION"));
-                exit(0);
+
+    cfg.long_empty_count = parsed.opt_get_default("o", 2)
+        .unwrap_or_else(|e| {
+            eprintln!("Error: parse to int error `{}`", e);
+            help(&opts, 2)
+        });
+    cfg.from_lang = parsed.opt_str("from");
+    cfg.to_lang = parsed.opt_str("to");
+
+    let mut fmtters = parsed.opt_strs("m");
+    if fmtters.is_empty() { fmtters.push(DEFAULT_OUT_FORMAT.to_owned()) }
+    for formatter in fmtters {
+        match formatter.parse() {
+            Ok(format) => cfg.format.push(format),
+            Err(e) => {
+                eprintln!("Error: on `{formatter}` build fmtter error: {e}");
+                help(&opts, 2)
             },
-            "--" => {
-                get_file!(get!("FILE"))
-            }
-            path => {
-                // file
-                get_file!(path)
-            }
         }
     }
-    if cfg.format.len() == 0 {
-        // use default formater
-        cfg.format.push(Fmtter::build(DEFAULT_OUT_FORMAT).unwrap())
+
+    let filename = match &parsed.free[..] {
+        [name] => name,
+        [] => {
+            eprintln!("Error: free argument missing");
+            help(&opts, 2);
+        }
+        [_, args @ ..] => {
+            eprintln!("Error: unexpected free arguments {args:?}");
+            help(&opts, 2);
+        }
+    };
+
+    match &**filename {
+        "-" => {
+            cfg.text.clear();
+            stdin().read_to_string(&mut cfg.text)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: readstdin error {}", e);
+                    exit(3);
+                });
+        },
+        path => {
+            cfg.text = read_to_string(path)
+                .unwrap_or_else(|e| {
+                    eprintln!("Error: readfile error {}", e);
+                    exit(3);
+                });
+        },
     }
+
     cfg.text = (&*cfg.text).filter_out_long_empty(cfg.long_empty_count);
-    if ! with_args {
-        eprintln!("error: no args");
-        help(2);
-    }
-    if ! readed_file {
-        eprintln!("error: no file");
-        help(2);
-    }
+
     cfg
 }
 
