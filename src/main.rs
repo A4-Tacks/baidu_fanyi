@@ -1,18 +1,9 @@
 use std::{
     collections::HashMap,
-    env::{
-        self,
-        args
-    },
+    env::{self, args},
     ffi::OsString,
-    fs::{
-        self,
-        read_to_string
-    },
-    io::{
-        stdin,
-        Read
-    },
+    fs::{self, File},
+    io::{stdin, Read, BufRead, BufReader},
     path::PathBuf,
     process::exit,
 };
@@ -21,6 +12,7 @@ use baidu_fanyi::{
     mini_fmt::Fmtter,
     traits::FilterOutLongEmpty
 };
+use either::Either::{Left, Right};
 use reqwest::{
     header::HeaderMap,
     Client,
@@ -356,6 +348,7 @@ fn get_cfg() -> Config {
 
     decl!(-f --from (lang)              "from lang");
     decl!(-t --to (lang)                "to lang");
+    decl!(-l --line                     "read one line");
     decl!(-m --fmt (*fstr)              "formatters (multiple)");
     decl!(-o --"empty-count" (count)    "filter out empty count (default:2)");
     decl!(-v --version*                 "show version");
@@ -425,24 +418,26 @@ fn get_cfg() -> Config {
         }
     };
 
-    match &**filename {
-        "-" => {
-            cfg.text.clear();
-            stdin().read_to_string(&mut cfg.text)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: readstdin error {}", e);
-                    exit(3);
-                });
-        },
+    let mut reader = match &**filename {
+        "-" => Left(stdin().lock()),
         path => {
-            cfg.text = read_to_string(path)
-                .unwrap_or_else(|e| {
-                    eprintln!("Error: readfile error {}", e);
-                    exit(3);
-                });
+            Right(BufReader::new(File::open(path).unwrap_or_else(|e| {
+                eprintln!("Error: open file error `{e}`");
+                exit(3)
+            })))
         },
-    }
+    };
 
+    cfg.text.clear();
+    let err = if parsed.opt_present("line") {
+        reader.read_line(&mut cfg.text)
+    } else {
+        reader.read_to_string(&mut cfg.text)
+    };
+    if let Err(e) = err {
+        eprintln!("Error: read text error `{e}`");
+        exit(3)
+    };
     cfg.text = (&*cfg.text).filter_out_long_empty(cfg.long_empty_count);
 
     cfg
