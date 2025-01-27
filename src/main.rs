@@ -296,6 +296,7 @@ fn help(opts: &getopts::Options, code: i32) -> ! {
         "    | %N | CR          |",
         "    | %t | Tab         |",
         "    | %e | ESC         |",
+        "    | %z | NUL         |",
         "    | %x | ASCII       |",
         "    | %u | Unicode     |",
         "    | %U | Unicode+    |",

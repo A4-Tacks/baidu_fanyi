@@ -75,6 +75,7 @@ pub mod mini_fmt {
     /// | %N | CR          |
     /// | %t | Tab         |
     /// | %e | ESC         |
+    /// | %z | NUL         |
     /// | %x | ASCII       |
     /// | %u | Unicode     |
     /// | %U | Unicode+    |
@@ -190,6 +191,7 @@ pub mod mini_fmt {
                             'N' => last_val.push('\r'), // 回车
                             't' => last_val.push('\t'), // 制表
                             'e' => last_val.push('\x1b'), // ESC
+                            'z' => last_val.push('\x00'), // NUL
                             'x' => add_hex!((++) u8), // ASCII
                             'u' => add_hex!((++++) u16), // Unicode
                             'U' => add_hex!((++++++) u32), // Unicode+
